@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iam-platform-db
+    environment:
+      POSTGRES_DB: iam_access_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - secrets:/run/secrets:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: iam-platform-backend
+    env_file: .env.production
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: iam_access_platform
+      DB_USER: postgres
+      PORT: 3001
+      NODE_ENV: production
+      CORS_ORIGIN: ${APP_URL:-https://localhost}
+      SSO_CALLBACK_URL: ${APP_URL:-https://localhost}/api/v1/auth/sso/callback
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${APP_URL:-https://localhost}
+    container_name: iam-platform-frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  pgdata:
+    driver: local
+  secrets:
+    external: true
+    name: secretmanager-access_secrets

@@ -1,0 +1,15 @@
+node_modules
+dist
+build
+.env
+.env.*
+*.log
+.git
+.gitignore
+tests
+__tests__
+coverage
+.nyc_output
+*.md
+.vscode
+.idea

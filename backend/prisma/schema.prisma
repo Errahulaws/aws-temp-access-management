@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  REQUESTER
+  APPROVER
+  AUDITOR
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ACTIVE
+  EXPIRED
+  REVOKED
+  ROLLBACK_FAILED
+}
+
+enum Environment {
+  dev
+  staging
+  prod
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String
+  role          Role      @default(REQUESTER)
+  roles         Role[]    @default([REQUESTER])
+  department    String?
+  password      String    @default("")
+  mfaEnabled    Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  requestsMade     AccessRequest[]  @relation("RequesterRelation")
+  requestsApproved AccessRequest[]  @relation("ApproverRelation")
+  auditLogs        AuditLog[]
+
+  @@map("users")
+}
+
+model AccessRequest {
+  id                 String        @id @default(uuid())
+  requesterId        String
+  requester          User          @relation("RequesterRelation", fields: [requesterId], references: [id])
+  approverId         String?
+  approver           User?         @relation("ApproverRelation", fields: [approverId], references: [id])
+
+  team               String?
+  roleLevel          String?
+  accessScope        String        @default("specific")
+  secretArns         String[]
+  actionsRequested   String[]
+  justification      String
+  environment        Environment
+  durationHours      Float
+  status             RequestStatus @default(PENDING)
+  approvalsRequired  Int           @default(1)
+  approvals          Json[]        @default([])
+
+  requestedAt        DateTime      @default(now())
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  activatedAt        DateTime?
+  expiresAt          DateTime?
+  revokedAt          DateTime?
+
+  rejectionNotes     String?
+  approverNotes      String?
+  policyStatementId  String?
+  policyDocument     Json?
+
+  awsAccountId       String?
+  targetAccountId    String?
+  principalArn       String?
+
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  auditLogs          AuditLog[]
+
+  @@index([requesterId])
+  @@index([status])
+  @@index([environment])
+  @@index([expiresAt])
+  @@index([team])
+  @@map("access_requests")
+}
+
+model AppSettings {
+  id        String   @id @default("singleton")
+  // Slack
+  slackEnabled       Boolean  @default(false)
+  slackWebhookUrl    String?
+  slackChannel       String?
+  slackNotifyOnCreate  Boolean @default(true)
+  slackNotifyOnApprove Boolean @default(true)
+  slackNotifyOnReject  Boolean @default(true)
+  slackNotifyOnRevoke  Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("app_settings")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  eventType   String
+  requestId   String?
+  request     AccessRequest? @relation(fields: [requestId], references: [id])
+  actorId     String?
+  actor       User?    @relation(fields: [actorId], references: [id])
+  actorRole   String?
+  eventData   Json?
+  ipAddress   String?
+  userAgent   String?
+  eventTime   DateTime @default(now())
+  s3Key       String?
+
+  @@index([requestId])
+  @@index([actorId])
+  @@index([eventType])
+  @@index([eventTime])
+  @@map("audit_logs")
+}
